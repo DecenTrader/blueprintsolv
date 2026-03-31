@@ -261,7 +261,7 @@ mod tests {
     #[test]
     fn generate_empty_floor_plan_produces_empty_model() {
         use crate::blueprint::scale::ScaleReference;
-        use crate::blueprint::{BoundingBox, ImagePoint, LengthUnit, WorldPoint};
+        use crate::blueprint::{ImagePoint, LengthUnit};
 
         let scale = ScaleReference::new(
             ImagePoint { x: 0, y: 0 },
@@ -275,5 +275,153 @@ mod tests {
         let floor_plan = crate::blueprint::floor_plan::build_floor_plan(&[], &scale, &[]).unwrap();
         let model = generate(&floor_plan, 2.44);
         assert!(model.meshes.is_empty());
+    }
+
+    /// T069 — RED test: bounds stored in feet must be normalised to meters in the OBJ output.
+    ///
+    /// Scale: 100 px = 10 ft  →  pixels_per_unit = 10.
+    /// Wall segment: pixel x from 0..100, so bounds.max.x = to_world_distance(100) = 10.0 ft.
+    /// After the fix (T070) the stored bound must be 10 * 0.3048 = 3.048 m.
+    /// Before the fix this assertion FAILS (max_x ≈ 10.0 instead of 3.048).
+    #[test]
+    fn wall_height_round_trips_with_feet_scale() {
+        use crate::blueprint::element::{ArchitecturalElement, ElementType};
+        use crate::blueprint::floor_plan::build_floor_plan;
+        use crate::blueprint::scale::ScaleReference;
+        use crate::blueprint::{BoundingBox, ImagePoint, LengthUnit, WorldPoint};
+        use uuid::Uuid;
+
+        // 100 px = 10 ft  →  ppu = 10
+        let scale = ScaleReference::new(
+            ImagePoint { x: 0, y: 0 },
+            ImagePoint { x: 100, y: 0 },
+            10.0,
+            LengthUnit::Feet,
+            1000,
+            1000,
+        )
+        .unwrap();
+
+        // Simulate what segment_to_element() currently produces for a 100-px wide wall:
+        // to_world_distance(100) = 100/10 = 10.0 ft  (not yet normalised to meters)
+        // After T070 this will be 10.0 * 0.3048 = 3.048 m.
+        let raw_x = scale.to_world_distance(100.0) * scale.unit.to_meters_factor();
+        let raw_thickness = scale.to_world_distance(5.0) * scale.unit.to_meters_factor();
+
+        let wall = ArchitecturalElement {
+            id: Uuid::new_v4(),
+            element_type: ElementType::Wall,
+            bounds: BoundingBox {
+                min: WorldPoint { x: 0.0, y: 0.0 },
+                max: WorldPoint {
+                    x: raw_x,
+                    y: raw_thickness,
+                },
+            },
+            source_segment_ids: vec![],
+            confidence: 0.9,
+            is_interior: Some(true),
+            wall_thickness_m: Some(raw_thickness),
+        };
+
+        let floor_plan = build_floor_plan(&[wall], &scale, &[]).unwrap();
+        let model = generate(&floor_plan, 2.44);
+
+        assert!(!model.meshes.is_empty(), "should produce at least one mesh");
+
+        let max_x = model
+            .meshes
+            .iter()
+            .flat_map(|m| m.triangles.iter())
+            .flat_map(|t| t.vertices.iter())
+            .map(|v| v[0])
+            .fold(f32::NEG_INFINITY, f32::max);
+
+        let max_y = model
+            .meshes
+            .iter()
+            .flat_map(|m| m.triangles.iter())
+            .flat_map(|t| t.vertices.iter())
+            .map(|v| v[1])
+            .fold(f32::NEG_INFINITY, f32::max);
+
+        // X bound must be ≈ 3.048 m (10 ft normalised to meters).
+        assert!(
+            (max_x - 3.048_f32).abs() < 0.01,
+            "max X should be ~3.048 m (10 ft in meters), got {max_x}"
+        );
+        // Wall height must equal the input wall_height_m exactly.
+        assert!(
+            (max_y - 2.44_f32).abs() < 0.01,
+            "max Y should be ~2.44 m (the input wall_height_m), got {max_y}"
+        );
+    }
+
+    /// Regression guard: meter-scale floor plans must continue to work correctly after T070.
+    #[test]
+    fn wall_height_round_trips_with_meters_scale() {
+        use crate::blueprint::element::{ArchitecturalElement, ElementType};
+        use crate::blueprint::floor_plan::build_floor_plan;
+        use crate::blueprint::scale::ScaleReference;
+        use crate::blueprint::{BoundingBox, ImagePoint, LengthUnit, WorldPoint};
+        use uuid::Uuid;
+
+        // 100 px = 5 m  →  ppu = 20
+        let scale = ScaleReference::new(
+            ImagePoint { x: 0, y: 0 },
+            ImagePoint { x: 100, y: 0 },
+            5.0,
+            LengthUnit::Meters,
+            1000,
+            1000,
+        )
+        .unwrap();
+
+        let raw_x = scale.to_world_distance(100.0) * scale.unit.to_meters_factor(); // 5.0 m
+        let raw_thickness = scale.to_world_distance(3.0) * scale.unit.to_meters_factor(); // 0.15 m
+
+        let wall = ArchitecturalElement {
+            id: Uuid::new_v4(),
+            element_type: ElementType::Wall,
+            bounds: BoundingBox {
+                min: WorldPoint { x: 0.0, y: 0.0 },
+                max: WorldPoint {
+                    x: raw_x,
+                    y: raw_thickness,
+                },
+            },
+            source_segment_ids: vec![],
+            confidence: 0.9,
+            is_interior: Some(true),
+            wall_thickness_m: Some(raw_thickness),
+        };
+
+        let floor_plan = build_floor_plan(&[wall], &scale, &[]).unwrap();
+        let model = generate(&floor_plan, 3.0);
+
+        let max_x = model
+            .meshes
+            .iter()
+            .flat_map(|m| m.triangles.iter())
+            .flat_map(|t| t.vertices.iter())
+            .map(|v| v[0])
+            .fold(f32::NEG_INFINITY, f32::max);
+
+        let max_y = model
+            .meshes
+            .iter()
+            .flat_map(|m| m.triangles.iter())
+            .flat_map(|t| t.vertices.iter())
+            .map(|v| v[1])
+            .fold(f32::NEG_INFINITY, f32::max);
+
+        assert!(
+            (max_x - 5.0_f32).abs() < 0.01,
+            "max X should be ~5.0 m, got {max_x}"
+        );
+        assert!(
+            (max_y - 3.0_f32).abs() < 0.01,
+            "max Y should be ~3.0 m (wall_height_m), got {max_y}"
+        );
     }
 }

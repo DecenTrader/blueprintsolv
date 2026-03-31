@@ -236,6 +236,25 @@ SketchUp and verify it matches the known real-world dimension within ±5% (SC-00
 
 ---
 
+## Phase 13: Crop Display Update + Clarification Highlight (2026-03-31)
+
+**Source**: spec.md Session 2026-03-31 clarifications (FR-024 updated, FR-029 new)
+
+## Phase 14: Bug Fix — Wall Height Unit Mismatch (FR-009, SC-004)
+
+**Source**: Bug report — walls in 3D output are not the height the user typed; root cause is that element bounds are stored in the user's scale unit (feet or meters) but `wall_height_m` is always in meters, so OBJ X/Z coordinates are in feet while Y is in meters when the user's scale reference uses feet.
+
+- [X] T069 [US4] Write a RED (failing) unit test `wall_height_round_trips_with_feet_scale` in `src/model3d/generator.rs` `#[cfg(test)]` block: create a `ScaleReference` with `LengthUnit::Feet` (100 px = 10 ft, ppu=10); manually construct one `ArchitecturalElement` (type Wall) with `bounds = BoundingBox { min: WorldPoint{x:0.0,y:0.0}, max: WorldPoint{x:10.0,y:0.15} }` representing 10 ft × 0.15 ft in feet-unit space; build a `FloorPlan` via `build_floor_plan`; call `generate(&fp, 2.44)`; assert the maximum X vertex coordinate across ALL triangles is within 0.01 of `3.048` (10 ft in meters) — this assertion MUST FAIL before T070 is applied; also assert max Y vertex ≈ 2.44 (this should already pass); confirm test is RED then commit it as-is
+- [X] T070 [US4] Fix the unit normalization bug: (1) add `pub fn to_meters_factor(self) -> f64` method to `LengthUnit` in `src/blueprint/mod.rs` returning `0.3048_f64` for `Feet` and `1.0` for `Meters`; (2) in `segment_to_element()` in `src/detection/rules/patterns.rs`, multiply every `scale.to_world_distance(…)` call result by `scale.unit.to_meters_factor()` — this normalises `bounds.min.x`, `bounds.min.y`, `bounds.max.x`, `bounds.max.y`, and the `wall_thickness_m` from `wall_spacing` to meters regardless of user scale unit; (3) run T069 test and confirm it is now GREEN; (4) run `cargo test` and confirm no regressions; also add a second test `wall_height_round_trips_with_meters_scale` verifying no regression for meter-based scales
+- [X] T071 [P] [US4] Add SC-004 height assertion to `tests/integration/test_export_obj.rs`: after parsing all `v` lines from the OBJ, collect Y coordinates (index 1 of each vertex triple); assert `max_y.abs() - 2.44 < 0.01` confirming the wall height in the exported file matches the input `wall_height_m = 2.44` within ±1 cm (SC-004)
+
+---
+
+- [X] T067 [US1] Update crop confirmation in `src/app/ui.rs` and `src/app/mod.rs`: after the user confirms the crop bounding box, immediately replace the displayed egui texture with a re-cropped version of the original image (call `image::DynamicImage::crop_imm` on the in-memory original and re-upload via `RetainedImage` or `ColorImage`); add a "Reset Crop" button to `render_cropping()` (and to any post-crop header bar) that clears `Session.crop_region`, re-uploads the full original texture, and returns the app to the pre-confirm crop state; the "Reset Crop" button MUST remain visible for as long as an active crop is set and analysis has not yet been started (FR-024)
+- [X] T068 [P] [US3] Implement low-confidence element highlight in `src/app/ui.rs` `render_clarifying()`: for each `PendingClarification`, compute the element's bounding box in screen coordinates using the same image-to-screen transform used for the crop drag overlay; call `ui.painter().rect_filled(screen_rect, 0.0, egui::Color32::from_rgba_unmultiplied(220, 30, 30, 120))` to draw a semi-transparent red fill over the element; the highlight MUST be rendered on the image before the classification selection widget so both are visible simultaneously (FR-029)
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies

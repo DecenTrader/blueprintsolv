@@ -57,11 +57,16 @@ pub fn segment_to_element(
         .iter()
         .fold((u32::MAX, 0u32), |(mn, mx), p| (mn.min(p.y), mx.max(p.y)));
 
+    // All ArchitecturalElement bounds are stored in meters (1 OBJ unit = 1 m per spec).
+    // If the user's scale reference uses feet, convert each distance to meters here so
+    // that downstream code (generator, exporter) never has to handle mixed units.
+    let m = scale.unit.to_meters_factor();
+
     let wall_thickness_m = if matches!(element_type, ElementType::Wall) {
-        let default_thickness = 0.1524; // 6 inches
+        let default_thickness = 0.1524; // 6 inches in meters
         Some(
             seg.wall_spacing
-                .map(|spacing| scale.to_world_distance(spacing))
+                .map(|spacing| scale.to_world_distance(spacing) * m)
                 .unwrap_or(default_thickness),
         )
     } else {
@@ -73,12 +78,12 @@ pub fn segment_to_element(
         element_type,
         bounds: BoundingBox {
             min: WorldPoint {
-                x: scale.to_world_distance(min_x as f64),
-                y: scale.to_world_distance(min_y as f64),
+                x: scale.to_world_distance(min_x as f64) * m,
+                y: scale.to_world_distance(min_y as f64) * m,
             },
             max: WorldPoint {
-                x: scale.to_world_distance(max_x as f64),
-                y: scale.to_world_distance(max_y as f64),
+                x: scale.to_world_distance(max_x as f64) * m,
+                y: scale.to_world_distance(max_y as f64) * m,
             },
         },
         source_segment_ids: vec![seg.id],
@@ -145,5 +150,71 @@ mod tests {
         let seg = make_seg(5.0, None); // 5px = 0.05 m → Unclassified
         let (et, _) = classify_segment(&seg, &scale);
         assert_eq!(et, ElementType::Unclassified);
+    }
+
+    /// T069 RED — bounds from a feet-scale segment must be stored in meters.
+    ///
+    /// Scale: 100 px = 10 ft  →  ppu = 10.
+    /// Segment: x from 0 to 100 px  →  to_world_distance(100) = 10 ft.
+    /// After fix (T070): bounds.max.x must be 10 * 0.3048 = 3.048 m (not 10 ft).
+    /// Before fix: bounds.max.x = 10.0  →  FAILS the assertion below.
+    #[test]
+    fn segment_to_element_normalises_feet_bounds_to_meters() {
+        let scale = ScaleReference::new(
+            ImagePoint { x: 0, y: 0 },
+            ImagePoint { x: 100, y: 0 },
+            10.0, // 100 px = 10 ft
+            LengthUnit::Feet,
+            1000,
+            1000,
+        )
+        .unwrap();
+
+        let seg = LineSegment {
+            id: Uuid::new_v4(),
+            points: vec![ImagePoint { x: 0, y: 0 }, ImagePoint { x: 100, y: 0 }],
+            length_pixels: 100.0,
+            real_world_length: scale.to_world_distance(100.0),
+            wall_spacing: None,
+        };
+
+        let elem = segment_to_element(&seg, ElementType::Wall, 0.9, &scale);
+
+        // bounds.max.x must be in meters: 10 ft * 0.3048 = 3.048 m (±1 mm tolerance).
+        assert!(
+            (elem.bounds.max.x - 3.048).abs() < 0.001,
+            "bounds.max.x should be ~3.048 m (10 ft normalised), got {}",
+            elem.bounds.max.x
+        );
+    }
+
+    /// Regression guard — meter-scale segments must still produce correct meter bounds.
+    #[test]
+    fn segment_to_element_meters_scale_unchanged() {
+        let scale = ScaleReference::new(
+            ImagePoint { x: 0, y: 0 },
+            ImagePoint { x: 100, y: 0 },
+            5.0, // 100 px = 5 m
+            LengthUnit::Meters,
+            1000,
+            1000,
+        )
+        .unwrap();
+
+        let seg = LineSegment {
+            id: Uuid::new_v4(),
+            points: vec![ImagePoint { x: 0, y: 0 }, ImagePoint { x: 100, y: 0 }],
+            length_pixels: 100.0,
+            real_world_length: scale.to_world_distance(100.0),
+            wall_spacing: None,
+        };
+
+        let elem = segment_to_element(&seg, ElementType::Wall, 0.9, &scale);
+
+        assert!(
+            (elem.bounds.max.x - 5.0).abs() < 0.001,
+            "bounds.max.x should be ~5.0 m, got {}",
+            elem.bounds.max.x
+        );
     }
 }
