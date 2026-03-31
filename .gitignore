@@ -1,0 +1,38 @@
+# Rust
+/target/
+**/*.rs.bk
+*.rlib
+
+# Build artifacts
+debug/
+release/
+
+# Cargo lock (keep for binary applications)
+# Cargo.lock
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# macOS
+.DS_Store
+
+# Logs / temp
+*.log
+*.tmp
+*.swp
+
+# Environment
+.env
+.env.*
+
+# Test output
+/test_fixtures/performance_results.md
+
+# ML model cache (downloaded at runtime, not committed)
+.blueprint2mod/
+
+# Profiling
+*.prof*
+perf.data

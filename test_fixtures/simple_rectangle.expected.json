@@ -1,0 +1,57 @@
+{
+  "description": "Simple 2-room floor plan: two rectangles sharing one wall, one door opening",
+  "image": {
+    "width_px": 800,
+    "height_px": 600
+  },
+  "scale": {
+    "ref_point_a": { "x": 100, "y": 300 },
+    "ref_point_b": { "x": 420, "y": 300 },
+    "pixel_distance": 320.0,
+    "real_world_distance_m": 3.66,
+    "expected_pixels_per_meter": 87.43
+  },
+  "elements": [
+    {
+      "element_type": "Wall",
+      "bounds": { "x": 100, "y": 100, "width": 600, "height": 8 },
+      "is_interior": false,
+      "note": "north exterior wall"
+    },
+    {
+      "element_type": "Wall",
+      "bounds": { "x": 100, "y": 492, "width": 600, "height": 8 },
+      "is_interior": false,
+      "note": "south exterior wall"
+    },
+    {
+      "element_type": "Wall",
+      "bounds": { "x": 100, "y": 100, "width": 8, "height": 400 },
+      "is_interior": false,
+      "note": "west exterior wall"
+    },
+    {
+      "element_type": "Wall",
+      "bounds": { "x": 692, "y": 100, "width": 8, "height": 400 },
+      "is_interior": false,
+      "note": "east exterior wall"
+    },
+    {
+      "element_type": "Wall",
+      "bounds": { "x": 396, "y": 100, "width": 8, "height": 320 },
+      "is_interior": true,
+      "note": "interior dividing wall (with door gap below)"
+    },
+    {
+      "element_type": "Door",
+      "bounds": { "x": 396, "y": 420, "width": 80, "height": 8 },
+      "is_interior": true,
+      "note": "interior door opening"
+    }
+  ],
+  "accuracy_gates": {
+    "wall_detection_min_pct": 90,
+    "interior_exterior_inference_min_pct": 90,
+    "dimension_tolerance_pct": 5
+  }
+}

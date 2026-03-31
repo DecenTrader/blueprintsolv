@@ -1,0 +1,67 @@
+[package]
+name = "blueprint2mod"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+description = "Convert top-down architectural blueprint images to 3D models (OBJ/STL)"
+
+[lib]
+name = "blueprint2mod"
+path = "src/lib.rs"
+
+[[bin]]
+name = "blueprint2mod"
+path = "src/main.rs"
+
+[dependencies]
+# GUI
+egui = "0.28"
+eframe = { version = "0.28", features = ["default"] }
+egui_extras = { version = "0.28", features = ["image"] }
+
+# Image I/O and processing
+image = { version = "0.25", features = ["jpeg", "png"] }
+imageproc = "0.25"
+
+# OCR (requires system libtesseract + libleptonica)
+leptess = "0.14"
+
+# ML inference (pure-Rust ONNX; fallback to ort if needed)
+tract-onnx = "0.21.7"
+
+# STL export
+stl_io = "0.8"
+
+# Session serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# HTTP (first-run model download)
+reqwest = { version = "0.12", features = ["blocking", "json"] }
+
+# Utilities
+uuid = { version = "1", features = ["v4", "serde"] }
+anyhow = "1"
+thiserror = "1"
+chrono = { version = "0.4", features = ["serde"] }
+dirs = "5"
+rfd = "0.14"
+
+# Data parallelism (FR-027)
+rayon = "1"
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[dependencies.tempfile]
+version = "3"
+
+[[bench]]
+name = "pipeline_bench"
+harness = false
+
+[profile.release]
+opt-level = 3
+strip = true
+lto = true
+codegen-units = 1

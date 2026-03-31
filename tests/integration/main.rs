@@ -1,0 +1,10 @@
+mod test_clarification;
+mod test_detection;
+mod test_detection_fallback;
+mod test_export_obj;
+mod test_export_stl;
+mod test_interior_exterior;
+mod test_ocr;
+mod test_scaling;
+mod test_session;
+mod test_size_gate;

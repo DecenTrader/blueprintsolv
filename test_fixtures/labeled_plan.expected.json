@@ -1,0 +1,47 @@
+{
+  "description": "Blueprint with room text labels: BEDROOM, KITCHEN, LIVING ROOM and a dimension annotation",
+  "image": {
+    "width_px": 1000,
+    "height_px": 800
+  },
+  "scale": {
+    "ref_point_a": { "x": 50, "y": 400 },
+    "ref_point_b": { "x": 450, "y": 400 },
+    "pixel_distance": 400.0,
+    "real_world_distance_m": 4.57,
+    "expected_pixels_per_meter": 87.53
+  },
+  "text_annotations": [
+    {
+      "annotation_type": "RoomLabel",
+      "room_type": "Bedroom",
+      "text": "BEDROOM",
+      "center": { "x": 200, "y": 250 }
+    },
+    {
+      "annotation_type": "RoomLabel",
+      "room_type": "Kitchen",
+      "text": "KITCHEN",
+      "center": { "x": 700, "y": 250 }
+    },
+    {
+      "annotation_type": "RoomLabel",
+      "room_type": "LivingRoom",
+      "text": "LIVING ROOM",
+      "center": { "x": 400, "y": 600 }
+    },
+    {
+      "annotation_type": "DimensionValue",
+      "value": 4.57,
+      "unit": "Meters",
+      "text": "15'",
+      "center": { "x": 250, "y": 780 }
+    }
+  ],
+  "accuracy_gates": {
+    "wall_detection_min_pct": 90,
+    "interior_exterior_inference_min_pct": 90,
+    "dimension_tolerance_pct": 5,
+    "ocr_label_recognition_min_pct": 90
+  }
+}
