@@ -6,6 +6,17 @@ pub enum LengthUnit {
     Meters,
 }
 
+impl LengthUnit {
+    /// Multiply a value in this unit by this factor to convert it to meters.
+    /// Returns `0.3048` for `Feet` (1 ft = 0.3048 m) and `1.0` for `Meters`.
+    pub fn to_meters_factor(self) -> f64 {
+        match self {
+            LengthUnit::Feet => 0.3048,
+            LengthUnit::Meters => 1.0,
+        }
+    }
+}
+
 /// A point in image (pixel) space. Origin is top-left; x increases right, y increases down.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct ImagePoint {

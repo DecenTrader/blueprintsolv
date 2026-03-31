@@ -236,6 +236,28 @@ fn render_image_loaded(app: &mut BlueprintApp, ui: &mut egui::Ui, ctx: &egui::Co
 }
 
 fn render_scale_controls(app: &mut BlueprintApp, ui: &mut egui::Ui) {
+    // T067: "Reset Crop" button — visible whenever a crop is active (FR-024).
+    let has_crop = app.session.as_ref().and_then(|s| s.crop_region).is_some();
+    if has_crop {
+        ui.horizontal(|ui| {
+            egui::Frame::none()
+                .fill(egui::Color32::from_rgb(230, 245, 255))
+                .inner_margin(egui::Margin::symmetric(6.0, 2.0))
+                .show(ui, |ui| {
+                    ui.label(egui::RichText::new("Crop active").small());
+                    if ui.small_button("Reset Crop").clicked() {
+                        if let Some(ref mut session) = app.session {
+                            session.crop_region = None;
+                        }
+                        app.image_texture = None; // force full-image reload
+                        app.scale_ui.reset();
+                        app.state = AppState::Cropping;
+                    }
+                });
+        });
+        ui.add_space(2.0);
+    }
+
     ui.add_space(4.0);
     match (&app.scale_ui.point_a, &app.scale_ui.point_b) {
         (None, _) => {
@@ -577,16 +599,110 @@ fn render_clarifying(app: &mut BlueprintApp, ui: &mut egui::Ui) {
         .and_then(|s| s.pending_clarifications.first().cloned());
 
     if let Some(ref clarification) = pending {
-        // Find the element for display
-        let elem_conf = app
+        // Find the element bounds and type for display
+        let elem_info = app
             .session
             .as_ref()
             .and_then(|s| s.elements.iter().find(|e| e.id == clarification.element_id))
-            .map(|e| (e.element_type.clone(), e.confidence));
+            .map(|e| (e.element_type.clone(), e.confidence, e.bounds));
 
+        // T068: image panel with semi-transparent red fill over element bounds (FR-029).
+        // Show the blueprint image with the ambiguous element highlighted in red so the
+        // user can see exactly what they are being asked to identify.
+        if let Some((_, _, elem_bounds)) = &elem_info {
+            if let Some(ref texture) = app.image_texture.clone() {
+                let ctx = ui.ctx().clone();
+                let available = ui.available_size();
+                // Reserve the top 40% of the available height for the image panel.
+                let img_panel_height = (available.y * 0.40).max(120.0);
+                let tex_size = texture.size_vec2();
+                let scale_factor = (available.x / tex_size.x)
+                    .min(img_panel_height / tex_size.y)
+                    .min(1.0);
+                let display_size = tex_size * scale_factor;
+                let offset_x = (available.x - display_size.x) * 0.5;
+                let image_rect =
+                    Rect::from_min_size(ui.cursor().min + Vec2::new(offset_x, 0.0), display_size);
+
+                // Draw the blueprint image
+                ui.painter().image(
+                    texture.id(),
+                    image_rect,
+                    Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
+                    egui::Color32::WHITE,
+                );
+
+                // Compute element bounds in texture-pixel space then in screen space.
+                // Element bounds are always stored in meters (post T070 fix).
+                // To recover pixel coordinates we reverse the to_world_distance * to_meters_factor path.
+                let scale_ref = app.session.as_ref().and_then(|s| s.scale.as_ref()).cloned();
+                let crop = app.session.as_ref().and_then(|s| s.crop_region);
+
+                if let Some(ref scale_ref) = scale_ref {
+                    let m_factor = scale_ref.unit.to_meters_factor();
+
+                    // Convert world-meters back to original image pixel coords.
+                    let orig_px = |world_m: f64| -> f32 {
+                        (world_m / m_factor * scale_ref.pixels_per_unit) as f32
+                    };
+
+                    let mut px_min_x = orig_px(elem_bounds.min.x);
+                    let mut px_min_y = orig_px(elem_bounds.min.y);
+                    let mut px_max_x = orig_px(elem_bounds.max.x);
+                    let mut px_max_y = orig_px(elem_bounds.max.y);
+
+                    // Adjust for crop offset if a crop was applied.
+                    if let Some(crop) = crop {
+                        px_min_x -= crop.x as f32;
+                        px_min_y -= crop.y as f32;
+                        px_max_x -= crop.x as f32;
+                        px_max_y -= crop.y as f32;
+                    }
+
+                    let tex_w = tex_size.x;
+                    let tex_h = tex_size.y;
+
+                    // Normalise to [0,1] texture space then map to screen space.
+                    let norm_to_screen = |norm_x: f32, norm_y: f32| -> Pos2 {
+                        Pos2::new(
+                            image_rect.min.x + norm_x * display_size.x,
+                            image_rect.min.y + norm_y * display_size.y,
+                        )
+                    };
+
+                    let screen_min = norm_to_screen(
+                        (px_min_x / tex_w).clamp(0.0, 1.0),
+                        (px_min_y / tex_h).clamp(0.0, 1.0),
+                    );
+                    let screen_max = norm_to_screen(
+                        (px_max_x / tex_w).clamp(0.0, 1.0),
+                        (px_max_y / tex_h).clamp(0.0, 1.0),
+                    );
+
+                    let highlight_rect = Rect::from_min_max(screen_min, screen_max);
+                    // Semi-transparent red fill (FR-029): Color32::from_rgba_unmultiplied(220,30,30,120)
+                    ui.painter().rect_filled(
+                        highlight_rect,
+                        0.0,
+                        egui::Color32::from_rgba_unmultiplied(220, 30, 30, 120),
+                    );
+                    ui.painter().rect_stroke(
+                        highlight_rect,
+                        0.0,
+                        egui::Stroke::new(2.0, egui::Color32::from_rgb(220, 30, 30)),
+                    );
+                }
+
+                // Advance the UI cursor past the image area.
+                ui.allocate_space(Vec2::new(available.x, display_size.y));
+                let _ = ctx; // ctx used for repaint only via painter above
+            }
+        }
+
+        ui.add_space(4.0);
         ui.group(|ui| {
             ui.label(format!("Pending: {}", clarification.context_snippet));
-            if let Some((et, conf)) = &elem_conf {
+            if let Some((et, conf, _)) = &elem_info {
                 ui.label(format!(
                     "Current type: {:?} ({:.0}% confidence)",
                     et,

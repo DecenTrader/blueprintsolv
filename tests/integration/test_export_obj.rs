@@ -105,4 +105,25 @@ fn sc003_obj_export_has_required_structure() {
         }
     }
     assert!(vertex_count > 0, "OBJ must contain at least one vertex");
+
+    // 8. SC-004 height gate: max Y vertex must be within 1 cm of wall_height_m = 2.44
+    let mut y_coords: Vec<f64> = Vec::new();
+    for line in obj_content.lines() {
+        if let Some(rest) = line.strip_prefix("v ") {
+            let coords: Vec<f64> = rest
+                .split_whitespace()
+                .filter_map(|s| s.parse().ok())
+                .collect();
+            if coords.len() == 3 {
+                y_coords.push(coords[1]);
+            }
+        }
+    }
+    if !y_coords.is_empty() {
+        let max_y = y_coords.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+        assert!(
+            (max_y - 2.44).abs() < 0.01,
+            "SC-004: max Y vertex should be ~2.44 m (wall_height_m), got {max_y:.4}"
+        );
+    }
 }
