@@ -103,7 +103,7 @@ fn render_cropping(app: &mut BlueprintApp, ui: &mut egui::Ui, ctx: &egui::Contex
                     .add_enabled(has_sel, egui::Button::new("Confirm Crop"))
                     .clicked()
                 {
-                    action_confirm_crop(app);
+                    action_confirm_crop(app, ctx);
                 }
                 if ui.button("Skip — use full image").clicked() {
                     app.state = AppState::ImageLoaded;
@@ -118,8 +118,10 @@ fn render_cropping(app: &mut BlueprintApp, ui: &mut egui::Ui, ctx: &egui::Contex
     });
 }
 
-/// Confirm the selected crop region: compute pixel coords, store in session, advance state.
-fn action_confirm_crop(app: &mut BlueprintApp) {
+/// Confirm the selected crop region: compute pixel coords, store in session, immediately
+/// upload the cropped texture so that the render_image_with_crop_drag call that follows
+/// in the same frame does not overwrite it with the full uncropped image.
+fn action_confirm_crop(app: &mut BlueprintApp, ctx: &egui::Context) {
     use crate::blueprint::CropRegion;
 
     if let (Some(start), Some(end)) = (app.crop_ui.start_px, app.crop_ui.end_px) {
@@ -131,10 +133,25 @@ fn action_confirm_crop(app: &mut BlueprintApp) {
             if let Some(ref mut session) = app.session {
                 session.crop_region = Some(CropRegion { x, y, width, height });
             }
+            // Upload the cropped texture immediately so the crop is visible on this frame.
+            // If we only set image_texture = None here, the render_image_with_crop_drag
+            // call that follows in the same frame would reload the full uncropped image.
+            if let Some(ref session) = app.session {
+                if let Ok(dyn_img) = session.image.load_pixels() {
+                    if let Some(crop) = session.crop_region {
+                        let cropped = dyn_img.crop_imm(crop.x, crop.y, crop.width, crop.height);
+                        let rgba = cropped.to_rgba8();
+                        let size = [rgba.width() as usize, rgba.height() as usize];
+                        let color_image = ColorImage::from_rgba_unmultiplied(size, &rgba);
+                        app.image_texture = Some(
+                            ctx.load_texture("blueprint", color_image, TextureOptions::LINEAR),
+                        );
+                    }
+                }
+            }
         }
     }
     app.state = AppState::ImageLoaded;
-    app.image_texture = None; // force reload with crop applied
     app.crop_ui.reset();
 }
 
