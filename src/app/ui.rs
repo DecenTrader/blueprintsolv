@@ -137,16 +137,13 @@ fn action_confirm_crop(app: &mut BlueprintApp, ctx: &egui::Context) {
             // If we only set image_texture = None here, the render_image_with_crop_drag
             // call that follows in the same frame would reload the full uncropped image.
             if let Some(ref session) = app.session {
-                if let Ok(dyn_img) = session.image.load_pixels() {
-                    if let Some(crop) = session.crop_region {
-                        let cropped = dyn_img.crop_imm(crop.x, crop.y, crop.width, crop.height);
-                        let rgba = cropped.to_rgba8();
-                        let size = [rgba.width() as usize, rgba.height() as usize];
-                        let color_image = ColorImage::from_rgba_unmultiplied(size, &rgba);
-                        app.image_texture = Some(
-                            ctx.load_texture("blueprint", color_image, TextureOptions::LINEAR),
-                        );
-                    }
+                if let Ok(dyn_img) = session.load_working_image() {
+                    let rgba = dyn_img.to_rgba8();
+                    let size = [rgba.width() as usize, rgba.height() as usize];
+                    let color_image = ColorImage::from_rgba_unmultiplied(size, &rgba);
+                    app.image_texture = Some(
+                        ctx.load_texture("blueprint", color_image, TextureOptions::LINEAR),
+                    );
                 }
             }
         }
@@ -327,12 +324,7 @@ fn render_image_with_clicks(app: &mut BlueprintApp, ui: &mut egui::Ui, ctx: &egu
     // Ensure texture is loaded (apply crop region if set, FR-024)
     if app.image_texture.is_none() {
         if let Some(ref session) = app.session {
-            if let Ok(dyn_img) = session.image.load_pixels() {
-                let dyn_img = if let Some(crop) = session.crop_region {
-                    dyn_img.crop_imm(crop.x, crop.y, crop.width, crop.height)
-                } else {
-                    dyn_img
-                };
+            if let Ok(dyn_img) = session.load_working_image() {
                 let rgba = dyn_img.to_rgba8();
                 let size = [rgba.width() as usize, rgba.height() as usize];
                 let color_image = ColorImage::from_rgba_unmultiplied(size, &rgba);
@@ -445,7 +437,7 @@ fn action_confirm_scale(app: &mut BlueprintApp) {
     let (img_w, img_h) = app
         .session
         .as_ref()
-        .map(|s| (s.image.width, s.image.height))
+        .map(|s| s.working_image_size())
         .unwrap_or((u32::MAX, u32::MAX));
     let unit = if app.scale_ui.use_meters {
         LengthUnit::Meters
