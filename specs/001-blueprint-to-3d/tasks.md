@@ -255,6 +255,17 @@ SketchUp and verify it matches the known real-world dimension within ±5% (SC-00
 
 ---
 
+## Phase 15: Bug Fix — Original Image Used Instead of Cropped Image in Pipeline (FR-024)
+
+**Source**: Bug report — after crop confirmation, the analysis pipeline and scale-reference bounds check still reference the original uncropped image in some paths. Root cause: each callsite independently applies `crop_imm()`; any callsite that omits it silently processes the full original image. Fix: centralise pixel loading in `Session::load_working_image()` and update all pipeline callsites; fix the scale-reference bounds validation to use cropped dimensions.
+
+- [X] T072 [US1] Add `pub fn load_working_image(&self) -> anyhow::Result<image::DynamicImage>` to `Session` in `src/session/serialization.rs`: call `self.image.load_pixels()` then apply `crop_region` via `crop_imm` if `Some`; add unit test `load_working_image_applies_crop` in that file: create a `Session` whose `image.width/height` differs from `crop_region` dimensions, call `load_working_image()` (using a real fixture or a synthetic white image saved to a temp file), assert returned image dimensions equal the crop dimensions, not the original
+- [X] T073 [US1] Refactor `action_analyze()` in `src/app/mod.rs` to use `session.load_working_image()`: replace the current `img.load_pixels()` call and the subsequent conditional `crop_imm()` block with a single `session.load_working_image()?`; remove the now-unused `img` and `session_crop` locals; keep `base_img = Arc::new(working_img)`
+- [X] T074 [US1] Fix scale-reference bounds validation in `action_confirm_scale()` in `src/app/ui.rs`: replace `s.image.width` / `s.image.height` with the effective (cropped) dimensions — `(crop.width, crop.height)` when `session.crop_region` is `Some`, `(session.image.width, session.image.height)` otherwise — so `ScaleReference::new()` validates clicked pixel coordinates against the image the user actually sees
+- [X] T075 [US1] Refactor texture-loading in `render_image_with_clicks()` and `action_confirm_crop()` in `src/app/ui.rs` to use `session.load_working_image()` instead of the manual `session.image.load_pixels()` + conditional `crop_imm()` pattern; keep `render_image_with_crop_drag()` using `session.image.load_pixels()` without crop (it intentionally shows the full image for crop selection)
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies

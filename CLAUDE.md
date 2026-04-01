@@ -94,7 +94,7 @@ See `.specify/memory/constitution.md` (v1.1.0).
 
 ## Recent Changes
 
-- **001-blueprint-to-3d** (2026-03-31): 71 tasks done.
+- **001-blueprint-to-3d** (2026-03-31): 75 tasks done.
   Pipeline: image load → **optional crop (FR-024)** → scale → **OCR on raw image + adaptive text masking (FR-004)** → **NLM denoising/rayon (FR-025, FR-027)** → **adaptive-Canny/rayon (FR-025, FR-027)** → **hybrid ML+rule classifier/rayon (FR-005, FR-027)** with **5-min timeout fallback (FR-028)** → **collinear segment merge (FR-026)** → OCR parse → interior/exterior inference → clarification UI → **3D mesh/rayon (FR-027)** → OBJ+MTL / binary STL export.
   55 unit tests passing. SC-001–SC-008 targets implemented.
   - **T055–T061** (FR-027, SC-008): `rayon` parallelism across all CPU-bound stages (NLM, Canny gradient, classifier batch, mesh generation); `build.rs` links Apple Accelerate (`-framework Accelerate`) on aarch64-macos; vDSP `vDSP_svesq` accelerates NLM patch-distance inner loop; `criterion` benchmark in `benches/pipeline_bench.rs`

@@ -261,10 +261,10 @@ impl BlueprintApp {
         use crate::ocr::extractor::OcrExtractor;
 
         // Extract the data we need before spawning.
-        let (img, scale, session_crop) = match &self.session {
-            Some(s) => match (&s.image, &s.scale) {
-                (img, Some(scale)) => (img.clone(), scale.clone(), s.crop_region),
-                _ => {
+        let scale = match &self.session {
+            Some(s) => match &s.scale {
+                Some(scale) => scale.clone(),
+                None => {
                     self.error_message =
                         Some("No scale reference — please set scale first.".to_string());
                     return;
@@ -277,21 +277,15 @@ impl BlueprintApp {
             }
         };
 
-        let raw_pixels = match img.load_pixels() {
-            Ok(p) => p,
+        let working_img = match self.session.as_ref().unwrap().load_working_image() {
+            Ok(img) => img,
             Err(e) => {
                 self.error_message = Some(format!("Failed to load image pixels: {}", e));
                 return;
             }
         };
 
-        let dyn_img = if let Some(crop) = session_crop {
-            raw_pixels.crop_imm(crop.x, crop.y, crop.width, crop.height)
-        } else {
-            raw_pixels
-        };
-
-        let base_img = std::sync::Arc::new(dyn_img);
+        let base_img = std::sync::Arc::new(working_img);
         let base_img_thread = base_img.clone();
 
         let (tx, rx) = mpsc::channel::<StageResult>();

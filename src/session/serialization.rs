@@ -92,6 +92,29 @@ impl Session {
         Ok(())
     }
 
+    /// Load image pixels with `crop_region` automatically applied (FR-024).
+    ///
+    /// All pipeline stages MUST use this method instead of calling `image.load_pixels()`
+    /// directly, to guarantee that the original image is never processed when a crop is active.
+    /// `render_image_with_crop_drag` is the only intentional exception (it shows the full
+    /// image so the user can draw a new crop selection).
+    pub fn load_working_image(&self) -> Result<image::DynamicImage> {
+        let raw = self.image.load_pixels()?;
+        Ok(match self.crop_region {
+            Some(crop) => raw.crop_imm(crop.x, crop.y, crop.width, crop.height),
+            None => raw,
+        })
+    }
+
+    /// Effective (post-crop) image dimensions. Use for bounds validation wherever
+    /// pixel coordinates are expected to lie within the working image, not the original.
+    pub fn working_image_size(&self) -> (u32, u32) {
+        match self.crop_region {
+            Some(crop) => (crop.width, crop.height),
+            None => (self.image.width, self.image.height),
+        }
+    }
+
     /// Deserialize a session from a `.b2m` JSON file.
     pub fn load(path: &Path) -> Result<Self> {
         let data = std::fs::read_to_string(path)
@@ -99,5 +122,77 @@ impl Session {
         let session: Self = serde_json::from_str(&data)
             .with_context(|| format!("Failed to parse session file: {}", path.display()))?;
         Ok(session)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::blueprint::CropRegion;
+
+    fn make_session_from_fixture() -> Option<Session> {
+        let fixture = std::path::Path::new("test_fixtures/simple_rectangle.jpg");
+        let img = crate::blueprint::image::BlueprintImage::load(fixture).ok()?;
+        Some(Session::new(img))
+    }
+
+    /// T072: load_working_image() must return cropped dimensions when a crop_region is set.
+    #[test]
+    fn load_working_image_applies_crop() {
+        let mut session = match make_session_from_fixture() {
+            Some(s) => s,
+            None => return, // fixture missing — skip (CI environment check)
+        };
+
+        let full = session.load_working_image().expect("full image loads");
+        let orig_w = full.width();
+        let orig_h = full.height();
+
+        // Apply a crop: remove a 10-pixel border on each side.
+        let pad = 10u32;
+        session.crop_region = Some(CropRegion {
+            x: pad,
+            y: pad,
+            width: orig_w.saturating_sub(pad * 2),
+            height: orig_h.saturating_sub(pad * 2),
+        });
+
+        let cropped = session.load_working_image().expect("cropped image loads");
+        assert_eq!(
+            cropped.width(),
+            orig_w - pad * 2,
+            "cropped width must be (orig - 2*pad)"
+        );
+        assert_eq!(
+            cropped.height(),
+            orig_h - pad * 2,
+            "cropped height must be (orig - 2*pad)"
+        );
+        assert_ne!(
+            cropped.width(),
+            orig_w,
+            "cropped image must not equal original width"
+        );
+
+        // working_image_size() must agree with the actual image dimensions.
+        let (ws_w, ws_h) = session.working_image_size();
+        assert_eq!(ws_w, cropped.width());
+        assert_eq!(ws_h, cropped.height());
+    }
+
+    /// Regression: without a crop, load_working_image() returns the full original image.
+    #[test]
+    fn load_working_image_without_crop_returns_original() {
+        let session = match make_session_from_fixture() {
+            Some(s) => s,
+            None => return,
+        };
+        assert!(session.crop_region.is_none());
+        let working = session.load_working_image().expect("loads");
+        assert_eq!(working.width(), session.image.width);
+        assert_eq!(working.height(), session.image.height);
+        let (ws_w, ws_h) = session.working_image_size();
+        assert_eq!(ws_w, session.image.width);
+        assert_eq!(ws_h, session.image.height);
     }
 }
